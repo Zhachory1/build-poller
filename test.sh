@@ -15,6 +15,7 @@ base1="$(git -C "$tmp/seed" rev-parse HEAD)"
 
 # Issue state served by the fake gh. Edit these files to change what "GitHub" returns.
 d="$tmp/gh-state"; mkdir -p "$d"
+echo '[]' > "$d/asked"
 echo WRITE > "$d/perm"; echo 0 > "$d/linked"; echo 0 > "$d/openpr"; echo null > "$d/edited"; echo '[]' > "$d/comments"
 
 cat > "$tmp/gh" <<FAKE
@@ -26,6 +27,7 @@ case "\$1 \$2" in
   "api graphql")
     case "\$*" in *"n=9"*) echo "HTTP 502" >&2; exit 1 ;; *"n=7"*) printf '%s' '{"data":{"repository":{"viewerPermission":"WRITE","defaultBranchRef":{"name":"main"},"issue":null}}}' | jq -r "\$jqf"; exit 0 ;; esac
     json="{\"data\":{\"repository\":{\"viewerPermission\":\"\$(cat $d/perm)\",\"defaultBranchRef\":{\"name\":\"main\"},\"issue\":{\"createdAt\":\"2026-01-01T00:00:00Z\",\"lastEditedAt\":\$(cat $d/edited),\"comments\":{\"nodes\":\$(cat $d/comments)},\"closedByPullRequestsReferences\":{\"totalCount\":\$(cat $d/linked)}}}}}" ;;
+  "issue view") json="{\"comments\":\$(cat $d/asked)}" ;;
   "pr list") json="\$(jq -cn --argjson n "\$(cat $d/openpr)" '[range(\$n) | {number: .}]')" ;;
   "auth git-credential") exit 0 ;;
   *) echo "unexpected gh \$*" >&2; exit 1 ;;
@@ -41,6 +43,7 @@ echo "\$(pwd) \$(git rev-parse --abbrev-ref HEAD) \$(git rev-parse HEAD) :: \$1"
 mkdir -p .maintain-scratch && echo body > .maintain-scratch/pr-body.md
 git status --porcelain >> "$tmp/agent-status.log"
 if [ -e "$tmp/agent-push" ]; then echo work >> f; git commit -qam work; git push -q origin HEAD:refs/heads/agent/issue-5; fi
+if [ ! -e "$tmp/agent-silent" ]; then echo '[{"author":{"login":"me"},"createdAt":"2099-01-01T00:00:00Z"}]' > "$d/asked"; fi
 [ ! -e "$tmp/agent-fail" ]
 AGENT
 chmod +x "$tmp/agent"
@@ -73,6 +76,7 @@ grep -q "git push origin HEAD:refs/heads/agent/issue-5" <<< "$line" || fail "pro
 clonep="$(cd "$tmp/state/repos/o/r" && pwd -P)"
 jq -e --arg p "$clonep" '.projects[$p].hasTrustDialogAccepted and .userID == "u"' "$tmp/claude/.claude.json" >/dev/null || fail "clone not trusted for Claude"
 
+echo '[]' > "$d/asked"
 poll; [ "$(calls)" = 1 ] || fail "unchanged issue built twice"
 echo '[{"author":{"login":"me"},"createdAt":"2026-01-03T00:00:00Z"}]' > "$d/comments"
 poll; [ "$(calls)" = 1 ] || fail "my own comment (e.g. the agent's question) retriggered"
@@ -81,6 +85,13 @@ poll; [ "$(calls)" = 2 ] || fail "issue edit did not retrigger"
 echo '[{"author":{"login":"me"},"createdAt":"2026-01-03T00:00:00Z"},{"author":{"login":"bob"},"createdAt":"2026-01-04T00:00:00Z"}]' > "$d/comments"
 touch "$tmp/agent-fail"; poll; [ "$(calls)" = 3 ] || fail "someone else's comment did not retrigger"
 rm "$tmp/agent-fail"; poll; [ "$(calls)" = 4 ] || fail "failed run not retried"
+
+# Agent exits 0 but leaves no PR and no question (e.g. its push failed): retry, do not mark handled.
+echo '"2026-01-04T12:00:00Z"' > "$d/edited"; echo '[]' > "$d/asked"; touch "$tmp/agent-silent"
+poll; [ "$(calls)" = 5 ] || fail "edit did not retrigger before silent run"
+poll; [ "$(calls)" = 6 ] || fail "run with no PR or question was marked handled"
+rm "$tmp/agent-silent"; poll; [ "$(calls)" = 7 ] || fail "silent run not retried"
+echo '[]' > "$d/asked"; poll; [ "$(calls)" = 7 ] || fail "run with a question was not marked handled"
 
 # A branch pushed by an earlier run (no PR yet) is resumed, not restarted from main.
 echo '"2026-01-05T00:00:00Z"' > "$d/edited"; touch "$tmp/agent-push"; poll; rm "$tmp/agent-push"
