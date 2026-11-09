@@ -77,11 +77,13 @@ while IFS=$'\t' read -r repo number url; do
   clone="$STATE_DIR/repos/$repo"
   # HTTPS with gh as the credential helper, set only in this clone, so pushes work under launchd without touching global git config.
   if [ ! -d "$clone/.git" ]; then
-    git -c credential.helper= -c 'credential.helper=!gh auth git-credential' clone -q --no-checkout "https://github.com/$repo.git" "$clone" \
+    git -c credential.helper= -c 'credential.helper=!gh auth git-credential' -c url.https://github.com/.insteadOf=https://github.com/ clone -q --no-checkout "https://github.com/$repo.git" "$clone" \
       || { rm -rf "$clone"; skip "clone failed"; continue; }
     git -C "$clone" config credential.helper ''
     git -C "$clone" config --add credential.helper '!gh auth git-credential'
   fi
+  # Pin HTTPS in this clone: a global url.<ssh>.insteadOf would push with the SSH key's account, not gh's. Set on every pass so existing clones are fixed too.
+  git -C "$clone" config url.https://github.com/.insteadOf https://github.com/
   if [ -n "${PR_BUILD_TRUST_CLAUDE:-}" ]; then claude_trust "$clone" || log "could not mark $clone trusted for Claude" >&2; fi
   git -C "$clone" fetch -q --prune origin "+refs/heads/$base:refs/remotes/origin/$base" "+refs/heads/agent/*:refs/remotes/origin/agent/*" \
     || { skip "fetch failed"; continue; }
