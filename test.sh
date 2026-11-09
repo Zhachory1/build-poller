@@ -67,6 +67,9 @@ grep -q 'Closes #5' <<< "$line" || fail "prompt missing Closes #5"
 grep -q "git push origin HEAD:refs/heads/agent/issue-5" <<< "$line" || fail "prompt missing push target"
 [ ! -s "$tmp/agent-status.log" ] || fail "scratch files show in git status"
 [ ! -e "$tmp/state/worktrees/o__r-5" ] || fail "worktree not removed"
+# A user's global ssh rewrite must not apply in the poller's clones: they push over https with gh credentials.
+[ "$(git -C "$tmp/state/repos/o/r" config --get url.https://github.com/.insteadOf)" = "https://github.com/" ] \
+  || fail "clone does not pin https over a global url rewrite"
 clonep="$(cd "$tmp/state/repos/o/r" && pwd -P)"
 jq -e --arg p "$clonep" '.projects[$p].hasTrustDialogAccepted and .userID == "u"' "$tmp/claude/.claude.json" >/dev/null || fail "clone not trusted for Claude"
 
