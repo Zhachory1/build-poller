@@ -112,4 +112,15 @@ git clone -q "$up" "$inst"; git -C "$inst" -c advice.detachedHead=false checkout
 out="$(/bin/bash "$inst/build-poller.sh" 2>&1)" || fail "auto-update pass failed: $out"
 [ "$(git -C "$inst" describe --tags)" = v0.10.0 ] || fail "did not update to newest tag"
 grep -q NEW-CODE-RAN <<< "$out" || fail "new code did not run in the same pass"
+
+# --version prints the release tag (or unknown outside a tagged clone) and exits 0 without updating or polling.
+n="$(calls)"
+git -C "$inst" -c advice.detachedHead=false checkout -q v0.1.0
+out="$(env -u PR_BUILD_AGENT_CMD /bin/bash "$inst/build-poller.sh" --version)" || fail "--version exited non-zero"
+[ "$out" = v0.1.0 ] || fail "--version printed '$out', want v0.1.0"
+[ "$(git -C "$inst" describe --tags)" = v0.1.0 ] || fail "--version self-updated"
+mkdir "$tmp/nogit"; cp build-poller.sh "$tmp/nogit/"
+out="$(GIT_CEILING_DIRECTORIES="$tmp" env -u PR_BUILD_AGENT_CMD /bin/bash "$tmp/nogit/build-poller.sh" --version)" || fail "--version exited non-zero outside git"
+[ "$out" = unknown ] || fail "--version outside git printed '$out', want unknown"
+[ "$(calls)" = "$n" ] || fail "--version polled"
 echo "ok"

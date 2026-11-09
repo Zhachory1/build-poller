@@ -4,6 +4,12 @@
 # else comments. launchd runs it on an interval and never overlaps runs of the same job.
 set -euo pipefail
 
+# Print the installed release and exit before the self-update fetch, so it never touches the network or checkout.
+if [ "${1:-}" = "--version" ]; then
+  git -C "$(dirname "$0")" describe --tags 2>/dev/null || echo unknown
+  exit 0
+fi
+
 # Self-update to the newest v* tag, then re-exec so the pass runs one version end to end.
 # Keep this block first and stable: a release that breaks it cannot update its way out.
 dir="$(cd "$(dirname "$0")" && pwd)"
