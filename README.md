@@ -1,5 +1,8 @@
 # build-poller
 
+> **Moved:** this poller now lives in [Zhachory1/pr-pollers](https://github.com/Zhachory1/pr-pollers) with the review, maintain, and build pollers together. New installs should use that repo; its install steps replace this one. This repo stays working for existing installs.
+
+
 A macOS launchd job that turns GitHub issues into draft PRs. For each open issue assigned to you **and** labeled `agent-build`, it runs your coding agent with the bundled [`issue-builder`](skills/issue-builder/SKILL.md) skill. The agent:
 
 - builds the smallest change that solves the issue on branch `agent/issue-<n>`, with tests;
